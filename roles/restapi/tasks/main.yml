@@ -9,7 +9,7 @@
         name: db-configmap
         namespace: '{{ ansible_operator_meta.namespace }}'
       data:
-        db-host: api-service
+        db-host: db-service
         db-name: students
 
 - name: create Secret
@@ -24,6 +24,23 @@
       data:
         db-username: cm9vdA==
         db-password: cm9vdA==
+
+- name: create Volume claim
+  community.kubernetes.k8s:
+    definition:
+      kind: PersistentVolumeClaim
+      apiVersion: v1
+      metadata:
+          name: mysql-pvc
+          namespace: '{{ ansible_operator_meta.namespace }}'
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        storageClassName: gp2-csi
+        volumeMode: Filesystem
 
 - name: start restapi
   community.kubernetes.k8s:
@@ -51,16 +68,26 @@
               ports:
                 - containerPort: 3000
               env:
-                - name: username
+                - name: DB_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: db-configmap
+                      key: db-host
+                - name: DB_NAME
+                  valueFrom:
+                    configMapKeyRef:
+                      name: db-configmap
+                      key: db-name
+                - name: DB_USER
                   valueFrom:
                     secretKeyRef:
                       name: credentials-secret
                       key: db-username
-                - name: password
+                - name: DB_PASSWORD
                   valueFrom:
                     secretKeyRef:
                       name: credentials-secret
-                      key: db-password
+                      key: db-password 
 
 - name: create service for api
   community.kubernetes.k8s:
@@ -73,11 +100,85 @@
         labels:
           app: rest-api
       spec:
-        type: LoadBalancer
+        type: ClusterIP
         ports:
         - port: 3000
           protocol: TCP
           targetPort: 3000
-          nodePort: 30000
         selector:
           app: rest-api
+
+- name: start database
+  community.kubernetes.k8s:
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: db-deployment
+        namespace: '{{ ansible_operator_meta.namespace }}'
+        labels:
+          app: mysql-db
+      spec:
+        replicas: 1
+        selector:
+          matchLabels: 
+            app: mysql-db
+        template:
+          metadata:
+            labels:
+              app: mysql-db
+          spec:
+            volumes:
+            - name: mysql-pvc
+              persistentVolumeClaim:
+                claimName: mysql-pvc
+            containers:
+            - name: mysql
+              image: mysql:5.6
+              ports:
+              - name: mysql
+                containerPort: 3306
+                protocol: TCP
+              env:
+                - name: MYSQL_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: credentials-secret
+                      key: db-password
+                - name: MYSQL_DATABASE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: db-configmap
+                      key: db-name
+                - name: MYSQL_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: db-configmap
+                      key: db-host
+                # - name: MYSQL_ROOT_USER
+                #   valueFrom:
+                #     secretKeyRef:
+                #       name: credentials-secret
+                #       key: db-username
+              volumeMounts:
+                - name: mysql-pvc
+                  mountPath: /var/lib/mysql                
+
+- name: create service for database
+  community.kubernetes.k8s:
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: db-service
+        namespace: '{{ ansible_operator_meta.namespace }}'
+        labels:
+          app: mysql-db
+      spec:
+        ports:
+        - port: 3306
+          protocol: TCP
+          targetPort: 3306
+        selector:
+          app: mysql-db
+        type: ClusterIP
