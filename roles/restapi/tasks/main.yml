@@ -1,0 +1,83 @@
+---
+# tasks file for Restapi
+- name: create configMap
+  community.kubernetes.k8s:
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: db-configmap
+        namespace: '{{ ansible_operator_meta.namespace }}'
+      data:
+        db-host: api-service
+        db-name: students
+
+- name: create Secret
+  community.kubernetes.k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: credentials-secret
+        namespace: '{{ ansible_operator_meta.namespace }}'
+      type: Opaque
+      data:
+        db-username: cm9vdA==
+        db-password: cm9vdA==
+
+- name: start restapi
+  community.kubernetes.k8s:
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: restapi-deployment
+        namespace: '{{ ansible_operator_meta.namespace }}'
+        labels:
+          app: rest-api
+      spec:
+        replicas: "{{ size }}"
+        selector:
+          matchLabels: 
+            app: rest-api
+        template:
+          metadata:
+            labels:
+              app: rest-api
+          spec:
+            containers:
+            - name: restapi
+              image: jonelledacunha/restapi:latest
+              ports:
+                - containerPort: 3000
+              env:
+                - name: username
+                  valueFrom:
+                    secretKeyRef:
+                      name: credentials-secret
+                      key: db-username
+                - name: password
+                  valueFrom:
+                    secretKeyRef:
+                      name: credentials-secret
+                      key: db-password
+
+- name: create service for api
+  community.kubernetes.k8s:
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-service
+        namespace: '{{ ansible_operator_meta.namespace }}'
+        labels:
+          app: rest-api
+      spec:
+        type: LoadBalancer
+        ports:
+        - port: 3000
+          protocol: TCP
+          targetPort: 3000
+          nodePort: 30000
+        selector:
+          app: rest-api

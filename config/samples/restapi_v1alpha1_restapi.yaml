@@ -1,0 +1,6 @@
+apiVersion: restapi.hub.docker.com/v1alpha1
+kind: Restapi
+metadata:
+  name: restapi-sample
+spec:
+  size: 2
