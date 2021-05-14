@@ -120,7 +120,7 @@
         labels:
           app: rest-api
       spec:
-        type: NodePort
+        type: ClusterIP
         ports:
         - port: 3000
           protocol: TCP
@@ -202,16 +202,3 @@
         selector:
           app: mysql-db
         type: ClusterIP
-
-- name: Check if service exists
-  command: kubectl get svc restapi-deployment -n '{{ ansible_operator_meta.namespace }}'
-  register: isServiceExist
-- debug:
-    msg: "{{ isServiceExist }}"
-      
-- name: create Ingress(Expose Service)
-  command: minikube service api-service --url=true -n '{{ ansible_operator_meta.namespace }}'
-  register: minikube_service
-- debug: 
-    msg: "URL: {{ minikube_service['stdout_lines'][0] }}"
- 
