@@ -40,7 +40,7 @@
         accessModes:
           - ReadWriteOnce
         hostPath:
-          path: "/mnt/data"
+          path: "/home/jonelle/mysql-data"
         # claimRef:
         #   name: mysql-pvc
         #   namespace: '{{ ansible_operator_meta.namespace }}'
